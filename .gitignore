@@ -1,3 +1,9 @@
 *.class
 *.jar
 **/target/**
+**/submission/**
+**/lib_managed/**
+**/.settings/**
+**/.worksheet/**
+**/.classpath
+**/.project
