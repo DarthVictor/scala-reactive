@@ -43,15 +43,47 @@ abstract class QuickCheckHeap extends Properties("Heap") with IntHeap {
     }
     
     property("hint3") = forAll { (h: H) =>
-        
-        def propertyHelper(heap: H, previousMin: Int):Boolean = {
-                if (isEmpty(heap)) true 
-                else {
-                    val currentMin = findMin(heap);
-                    (currentMin >= previousMin) && propertyHelper(deleteMin(heap), currentMin)
-                }                
+        def propertyHelper(heap: H, previousMin: Int): Boolean = {
+            if (isEmpty(heap)) true 
+            else {
+                val currentMin = findMin(heap);
+                (currentMin >= previousMin) && propertyHelper(deleteMin(heap), currentMin)
+            }                
         }
-        val firstMin = findMin(h);
-        propertyHelper(deleteMin(h), firstMin)
+        if ( isEmpty(h) ){
+            true
+        }
+        else{
+            val firstMin = findMin(h);
+            propertyHelper(deleteMin(h), firstMin)
+        }
     } 
+       
+    property("hint4") = forAll { (h1: H, h2: H) =>
+        if (isEmpty(h1) || isEmpty (h2)) {
+            true
+        }
+        else{
+            val a = findMin(h1)
+            val b = findMin(h2)
+            val min = (if (a > b) b else a)
+            findMin(meld(h1, h2)) == min && findMin(meld(h2, h1)) == min
+        }
+    } 
+    
+    property("my_hint1") = forAll { (h1: H, h2: H) =>
+        if (isEmpty(h1) || isEmpty (h2)) {
+            true
+        }
+        else{
+            val a = findMin(h1)
+            val b = findMin(h2)
+            if (a > b) {
+                findMin(deleteMin(meld(h1, h2))) == findMin(meld(deleteMin(h2), h1))
+            } 
+            else {
+                findMin(deleteMin(meld(h1, h2))) == findMin(meld(deleteMin(h1), h2))
+            }
+        }
+    }
 }
