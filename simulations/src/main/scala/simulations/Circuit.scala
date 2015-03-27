@@ -198,6 +198,44 @@ object Circuit extends CircuitSimulator {
     in.setSignal(false)
     run
   }
+  
+  def demuxExample3 {
+    val in, c2, c1, c0, out7, out6, out5, out4, out3, out2, out1, out0 = new Wire
+    demux(in, List(c2, c1, c0), List(out7, out6, out5, out4, out3, out2, out1, out0))
+    probe("in", in)
+    probe("c0", c0)
+    probe("c1", c1)
+    probe("c2", c2)
+    probe("out0", out0)
+    probe("out1", out1)
+    probe("out2", out2)
+    probe("out3", out3)
+    probe("out4", out4)
+    probe("out5", out5)
+    probe("out6", out6)
+    probe("out7", out7)
+    
+    in.setSignal(true)
+    run
+
+    c1.setSignal(true)
+    run
+    
+    c0.setSignal(true)
+    run
+
+    c1.setSignal(false)
+    run
+    
+    c2.setSignal(true)
+    run
+    
+    c1.setSignal(true)
+    run
+    
+    in.setSignal(false)
+    run
+  }
 }
 
 object CircuitMain extends App {
@@ -206,7 +244,9 @@ object CircuitMain extends App {
   Circuit.andGateExample
   Circuit.orGateExample
   Circuit.orGate2Example
-  */
+
   Circuit.demuxExample
   Circuit.demuxExample2
+    */
+  Circuit.demuxExample3
 }
