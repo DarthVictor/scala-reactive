@@ -6,6 +6,7 @@ import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
 import scala.async.Async.{async, await}
 
+
 /** Contains basic data types, data structures and `Future` extensions.
  */
 package object nodescala {
@@ -18,7 +19,7 @@ package object nodescala {
      */
     def always[T](value: T): Future[T] = {
       val p = Promise[T]()
-      p.complete(value)
+      p.success(value)
       p.future
     }
 
@@ -28,7 +29,7 @@ package object nodescala {
      */
     def never[T]: Future[T] = {
       val p = Promise[T]()
-      p.failure()
+      p.failure(new IllegalStateException)
       p.future
     }
 
@@ -37,7 +38,14 @@ package object nodescala {
      *  The values in the list are in the same order as corresponding futures `fs`.
      *  If any of the futures `fs` fails, the resulting future also fails.
      */
-    def all[T](fs: List[Future[T]]): Future[List[T]] = ???
+    def all[T](fs: List[Future[T]]): Future[List[T]] = {
+      val successful = Promise[List[T]]()
+      successful.success(Nil)
+      fs.foldRight(successful.future) {
+        (f, acc) => for { x <- f; xs <- acc } yield x :: xs
+      }
+    
+    }
 
     /** Given a list of futures `fs`, returns the future holding the value of the future from `fs` that completed first.
      *  If the first completing future in `fs` fails, then the result is failed as well.
@@ -48,11 +56,23 @@ package object nodescala {
      *
      *  may return a `Future` succeeded with `1`, `2` or failed with an `Exception`.
      */
-    def any[T](fs: List[Future[T]]): Future[T] = ???
+    def any[T](fs: List[Future[T]]): Future[T] = {
+      val p = Promise[T]()
+      val completed = false
+      fs.map((future: Future[T]) => {
+          future.onComplete((t: Try[T]) => {
+              if (!p.isCompleted) p.complete(t)
+          })
+      })
+      p.future
+    }
+    
 
     /** Returns a future with a unit value that is completed after time `t`.
      */
-    def delay(t: Duration): Future[Unit] = ???
+    def delay(t: Duration): Future[Unit] =  Future {
+        Thread.sleep(t.toMillis);
+    }
 
     /** Completes this future with user input.
      */
@@ -78,7 +98,14 @@ package object nodescala {
      *  However, it is also non-deterministic -- it may throw or return a value
      *  depending on the current state of the `Future`.
      */
-    def now: T = ???
+    def now: T = {
+      if (f.isCompleted){
+        Await.result(f, Duration(-100, MILLISECONDS))
+      }
+      else{
+        throw new NoSuchElementException
+      }
+    }
 
     /** Continues the computation of this future by taking the current future
      *  and mapping it into another future.
