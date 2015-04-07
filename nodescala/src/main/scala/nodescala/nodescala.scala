@@ -6,6 +6,7 @@ import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
 import scala.async.Async.{async, await}
 import scala.collection._
+import scala.util.Try
 import scala.collection.JavaConversions._
 import java.util.concurrent.{Executor, ThreadPoolExecutor, TimeUnit, LinkedBlockingQueue}
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
@@ -111,7 +112,14 @@ object NodeScala {
      *  @param relativePath    the relative path on which we want to listen to requests
      *  @return                the promise holding the pair of a request and an exchange object
      */
-    def nextRequest(): Future[(Request, Exchange)] = ???
+    def nextRequest(): Future[(Request, Exchange)] = {
+      val requestPromise = Promise[(Request, Exchange)]()
+      createContext((exchange: Exchange) => {
+        requestPromise.complete( Try(exchange.request, exchange) )
+        removeContext()
+      })
+      requestPromise.future
+    }
   }
 
   object Listener {
