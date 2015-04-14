@@ -76,7 +76,6 @@ trait BinomialHeap extends Heap {
   }
 }
 
-
 trait Bogus1BinomialHeap extends BinomialHeap {
   override def findMin(ts: H) = ts match {
     case Nil => throw new NoSuchElementException("min of empty heap")
@@ -93,7 +92,7 @@ trait Bogus3BinomialHeap extends BinomialHeap {
   override protected def link(t1: Node, t2: Node): Node = // t1.r==t2.r
     if (ord.lteq(t1.x,t2.x)) Node(t1.x, t1.r+1, t1::t1.c) else Node(t2.x, t2.r+1, t2::t2.c)
 }
-  
+
 trait Bogus4BinomialHeap extends BinomialHeap {
   override def deleteMin(ts: H) = ts match {
     case Nil => throw new NoSuchElementException("delete min of empty heap")
