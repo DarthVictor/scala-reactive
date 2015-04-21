@@ -18,6 +18,9 @@ object Polynomial {
     if (a() == 0) {
       Signal(Set())
     }
+    else if (delta() < 0){
+      Signal(Set())
+    }
     else if (delta() == 0){
       Signal(Set(-b()/(2*a())))
     }
