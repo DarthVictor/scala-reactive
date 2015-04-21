@@ -16,13 +16,13 @@ object Polynomial {
   def computeSolutions(a: Signal[Double], b: Signal[Double],
       c: Signal[Double], delta: Signal[Double]): Signal[Set[Double]] = {
     if (a() == 0) {
-      Signal(Set(Double.NaN))
+      Signal(Set())
     }
     else if (delta() == 0){
       Signal(Set(-b()/(2*a())))
     }
     else {
-      Signal(Set( (-b() - delta())/(2*a()), (-b() + delta())/(2*a())))
+      Signal(Set( (-b() - Math.sqrt(delta()))/(2*a()), (-b() + Math.sqrt(delta()))/(2*a())))
     }
   }
 }
