@@ -16,7 +16,7 @@ object Polynomial {
   def computeSolutions(a: Signal[Double], b: Signal[Double],
       c: Signal[Double], delta: Signal[Double]): Signal[Set[Double]] = {
     if (a() == 0) {
-      throw new ZeroCoaficientException("Not square polinom")
+      Signal(Set(Double.NaN))
     }
     else if (delta() == 0){
       Signal(Set(-b()/(2*a())))
