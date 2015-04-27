@@ -1,7 +1,5 @@
 package nodescala
 
-
-
 import scala.language.postfixOps
 import scala.util.{Try, Success, Failure}
 import scala.collection._
@@ -17,13 +15,12 @@ import org.scalatest.junit.JUnitRunner
 @RunWith(classOf[JUnitRunner])
 class NodeScalaSuite extends FunSuite {
 
-  test("A Future should always be created") {
+  test("A Future should always be completed") {
     val always = Future.always(517)
 
     assert(Await.result(always, 0 nanos) == 517)
   }
-
-  test("A Future should never be created") {
+  test("A Future should never be completed") {
     val never = Future.never[Int]
 
     try {
@@ -109,25 +106,6 @@ class NodeScalaSuite extends FunSuite {
       l.emit(req)
     }
   }
-
-  test("Listener should serve the next request as a future") {
-    val dummy = new DummyListener(8191, "/test")
-    val subscription = dummy.start()
-
-    def test(req: Request) {
-      val f = dummy.nextRequest()
-      dummy.emit(req)
-      val (reqReturned, xchg) = Await.result(f, 1 second)
-
-      assert(reqReturned == req)
-    }
-
-    test(immutable.Map("StrangeHeader" -> List("StrangeValue1")))
-    test(immutable.Map("StrangeHeader" -> List("StrangeValue2")))
-
-    subscription.unsubscribe()
-  }
-
   test("Server should serve requests") {
     val dummy = new DummyServer(8191)
     val dummySubscription = dummy.start("/testDir") {
