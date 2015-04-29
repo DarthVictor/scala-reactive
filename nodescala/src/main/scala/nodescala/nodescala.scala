@@ -3,6 +3,7 @@ package nodescala
 import com.sun.net.httpserver._
 import scala.concurrent._
 import scala.concurrent.duration._
+import scala.util.{Success, Failure}
 import ExecutionContext.Implicits.global
 import scala.async.Async.{async, await}
 import scala.collection._
@@ -29,7 +30,18 @@ trait NodeScala {
    *  @param token        the cancellation token 
    *  @param body         the response to write back
    */
-  private def respond(exchange: Exchange, token: CancellationToken, response: Response): Unit = ???
+  private def respond(exchange: Exchange, token: CancellationToken, response: Response): Unit = {
+      if(response.hasNext() && token.nonCancelled){          
+          val f = Future {
+              exchange.write(response.next())
+          }
+          f onComplete {
+              case Success(u) => respond(exchange, token, response)
+              case Failure(t) => exchange.close()
+          }
+      }
+      exchange.close()
+  }
 
   /** A server:
    *  1) creates and starts an http listener

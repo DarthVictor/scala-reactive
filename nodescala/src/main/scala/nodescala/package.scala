@@ -1,5 +1,6 @@
 import scala.language.postfixOps
 import scala.util._
+import scala.io.StdIn
 import scala.util.control.NonFatal
 import scala.concurrent._
 import scala.concurrent.duration._
@@ -77,7 +78,9 @@ package object nodescala {
     /** Completes this future with user input.
      */
     def userInput(message: String): Future[String] = Future {
-      readLine(message)
+      blocking {
+        StdIn.readLine(message)
+      }
     }
 
     /** Creates a cancellable context for an execution and runs it.
