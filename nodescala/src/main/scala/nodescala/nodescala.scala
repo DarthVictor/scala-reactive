@@ -32,13 +32,7 @@ trait NodeScala {
    */
   private def respond(exchange: Exchange, token: CancellationToken, response: Response): Unit = {
       if(response.hasNext() && token.nonCancelled){          
-          val f = Future {
-              exchange.write(response.next())
-          }
-          f onComplete {
-              case Success(u) => respond(exchange, token, response)
-              case Failure(t) => exchange.close()
-          }
+          exchange.write(response.next())
       }
       exchange.close()
   }
@@ -53,7 +47,23 @@ trait NodeScala {
    *  @param handler        a function mapping a request to a response
    *  @return               a subscription that can stop the server and all its asynchronous operations *entirely*
    */
-  def start(relativePath: String)(handler: Request => Response): Subscription = ???
+  def start(relativePath: String)(handler: Request => Response): Subscription = {
+      val listener = createListener(relativePath)
+      val listenerSubscription = listener.start()
+      
+      /*f: CancellationToken => Future[Unit]*/
+      def processNextRequest(cancellationToken: CancellationToken) = {
+        async {
+            while(cancellationToken.nonCancelled){
+              val (request, exchange) = await { listener.nextRequest() }
+              async {
+                respond(exchange, cancellationToken, handler(request))
+              }
+            }
+        }  
+      }
+      Subscription(Future.run()(processNextRequest), listenerSubscription)
+  }
 
 }
 

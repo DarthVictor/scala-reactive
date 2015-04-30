@@ -125,7 +125,10 @@ package object nodescala {
         case Failure(e) =>
           p.failure(e)
         case Success(x) =>
-          p.success(cont(f))
+          Try(cont(f)) match{
+            case Success(v) => p.success(v)
+            case Failure(e) => p.failure(e)
+          }
       }
       p.future      
     }
@@ -140,7 +143,10 @@ package object nodescala {
      val p = Promise[S]()
       f onComplete {
         case tryValue =>
-          p.success(cont(tryValue))
+          Try(cont(tryValue)) match{
+            case Success(v) => p.success(v)
+            case Failure(e) => p.failure(e)
+          }
       }
       p.future      
     }
