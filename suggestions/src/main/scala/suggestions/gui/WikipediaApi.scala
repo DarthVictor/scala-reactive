@@ -9,12 +9,12 @@ import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.{ Try, Success, Failure }
 import rx.subscriptions.CompositeSubscription
-import rx.lang.scala.Observable
+import rx.lang.scala.{Observable, Observer, Subscription}
 import observablex._
 import search._
 
 trait WikipediaApi {
-
+  
   /** Returns a `Future` with a list of possible completions for a search `term`.
    */
   def wikipediaSuggestion(term: String): Future[List[String]]
@@ -37,8 +37,15 @@ trait WikipediaApi {
      *
      * E.g. `"erik", "erik meijer", "martin` should become `"erik", "erik_meijer", "martin"`
      */
-    def sanitized: Observable[String] = ???
-
+    def sanitized: Observable[String] = {
+      Observable[String](observer => {
+        obs.subscribe(
+          (s: String) => {observer.onNext(s.replace(" ", "_"))},
+          (e: Throwable) => {observer.onError(e)},
+          () => {observer.onCompleted()}
+        )
+      })    
+    }
   }
 
   implicit class ObservableOps[T](obs: Observable[T]) {
@@ -48,7 +55,18 @@ trait WikipediaApi {
      *
      * E.g. `1, 2, 3, !Exception!` should become `Success(1), Success(2), Success(3), Failure(Exception), !TerminateStream!`
      */
-    def recovered: Observable[Try[T]] = ???
+    def recovered: Observable[Try[T]] = {
+      Observable[Try[T]](observer => {
+        obs.subscribe(
+          (t: T) => {observer.onNext(Success(t))},
+          (e: Throwable) => {
+            observer.onNext(Failure(e))
+            observer.onCompleted()
+          },
+          () => {observer.onCompleted()}
+        )
+      })    
+    }
 
     /** Emits the events from the `obs` observable, until `totalSec` seconds have elapsed.
      *
