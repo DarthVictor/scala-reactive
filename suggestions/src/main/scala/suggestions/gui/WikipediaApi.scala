@@ -44,7 +44,7 @@ trait WikipediaApi {
           (e: Throwable) => {observer.onError(e)},
           () => {observer.onCompleted()}
         )
-      })    
+      })
     }
   }
 
@@ -65,7 +65,7 @@ trait WikipediaApi {
           },
           () => {observer.onCompleted()}
         )
-      })    
+      })
     }
 
     /** Emits the events from the `obs` observable, until `totalSec` seconds have elapsed.
