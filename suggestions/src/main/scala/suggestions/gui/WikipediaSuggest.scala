@@ -88,11 +88,15 @@ object WikipediaSuggest extends SimpleSwingApplication with ConcreteSwingApi wit
 
     // TO IMPLEMENT
     val suggestionSubscription: Subscription =  suggestions.observeOn(eventScheduler) subscribe {
-      x => ???
+      x => x match {
+      	case Success(x) => suggestionList.listData = x
+      	case Failure(e) => status.text = e.getMessage()
+      }
     }
 
     // TO IMPLEMENT
-    val selections: Observable[String] = ???
+    val selections: Observable[String] = button.clicks.filter(_ => suggestionList.listData.size > 0)
+                                                .map(_ => suggestionList.)
 
     // TO IMPLEMENT
     val pages: Observable[Try[String]] = ???

@@ -7,5 +7,6 @@
 **/.worksheet/**
 **/.classpath
 **/.project
+**/.idea
 /quickcheck/.classpath
 target
