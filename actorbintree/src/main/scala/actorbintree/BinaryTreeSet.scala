@@ -101,7 +101,32 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
 
   // optional
   /** Handles `Operation` messages and `CopyTo` requests. */
-  val normal: Receive = { case _ => ??? }
+  val normal: Receive = {
+    case Contains(requester, id, elem) => {
+      if(elem == this.elem) {
+        requester ! ContainsResult(id, true)
+      }
+      else if (elem < this.elem){
+        if(subtrees.contains(Left)) {
+          subtrees(Left) ! Contains(requester, id, elem)
+        }
+        else{
+          requester ! ContainsResult(id, false)
+        }
+      }
+      else if (elem > this.elem){
+        if(subtrees.contains(Right)) {
+          subtrees(Right) ! Contains(requester, id, elem)
+        }
+        else{
+          requester ! ContainsResult(id, false)
+        }
+      }
+    }
+    case Insert(requester, id, elem) => ???
+    case Remove(requester, id, elem) => ???
+    case _ => ???
+  }
 
   // optional
   /** `expected` is the set of ActorRefs whose replies we are waiting for,
