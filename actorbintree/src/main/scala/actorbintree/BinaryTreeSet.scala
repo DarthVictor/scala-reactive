@@ -123,7 +123,29 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
         }
       }
     }
-    case Insert(requester, id, elem) => ???
+    case Insert(requester, id, elem) => {
+      if(elem == this.elem) {
+        requester ! OperationFinished (id)
+      }
+      else if (elem < this.elem){
+        if(subtrees.contains(Left)) {
+          subtrees(Left) ! Insert(requester, id, elem)
+        }
+        else{
+          subtrees += Left ->  context.actorOf(BinaryTreeNode.props(elem = elem, initiallyRemoved = false))
+          requester ! OperationFinished (id)
+        }
+      }
+      else if (elem > this.elem){
+        if(subtrees.contains(Right)) {
+          subtrees(Right) ! Insert(requester, id, elem)
+        }
+        else{
+          subtrees += Right ->  context.actorOf(BinaryTreeNode.props(elem = elem, initiallyRemoved = false))
+          requester ! OperationFinished (id)
+        }
+      }
+    }
     case Remove(requester, id, elem) => ???
     case _ => ???
   }
