@@ -123,6 +123,7 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
         }
       }
     }
+
     case Insert(requester, id, elem) => {
       if(elem == this.elem) {
         requester ! OperationFinished (id)
@@ -146,7 +147,28 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
         }
       }
     }
-    case Remove(requester, id, elem) => ???
+    case Remove(requester, id, elem) => {
+      if(elem == this.elem) {
+        removed = true
+        requester ! OperationFinished(id)
+      }
+      else if (elem < this.elem){
+        if(subtrees.contains(Left)) {
+          subtrees(Left) ! Remove(requester, id, elem)
+        }
+        else{
+          requester ! OperationFinished(id)
+        }
+      }
+      else if (elem > this.elem){
+        if(subtrees.contains(Right)) {
+          subtrees(Right) ! Remove(requester, id, elem)
+        }
+        else{
+          requester ! OperationFinished(id)
+        }
+      }
+    }
     case _ => ???
   }
 
