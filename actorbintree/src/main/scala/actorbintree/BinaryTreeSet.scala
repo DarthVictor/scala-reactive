@@ -66,7 +66,12 @@ class BinaryTreeSet extends Actor {
 
   // optional
   /** Accepts `Operation` and `GC` messages. */
-  val normal: Receive = { case _ => ??? }
+  val normal: Receive = {
+    case Insert(requester, id, ref) => root ! Insert(requester, id, ref)
+    case Contains(requester, id, ref) => root ! Contains(requester, id, ref)
+    case Remove(requester, id, ref) => root ! Remove(requester, id, ref)
+    case _ => ???
+  }
 
   // optional
   /** Handles messages while garbage collection is performed.
@@ -104,7 +109,7 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
   val normal: Receive = {
     case Contains(requester, id, elem) => {
       if(elem == this.elem) {
-        requester ! ContainsResult(id, true)
+        requester ! ContainsResult(id, !removed)
       }
       else if (elem < this.elem){
         if(subtrees.contains(Left)) {
@@ -126,6 +131,7 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
 
     case Insert(requester, id, elem) => {
       if(elem == this.elem) {
+        removed = false
         requester ! OperationFinished (id)
       }
       else if (elem < this.elem){
