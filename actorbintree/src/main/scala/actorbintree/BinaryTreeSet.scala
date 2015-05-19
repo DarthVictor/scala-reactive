@@ -39,6 +39,8 @@ object BinaryTreeSet {
   /** Request to perform garbage collection*/
   case object GC
 
+  case object CheckForGc
+
   /** Holds the answer to the Contains request with identifier `id`.
     * `result` is true if and only if the element is present in the tree.
     */
@@ -57,7 +59,9 @@ class BinaryTreeSet extends Actor {
   def createRoot: ActorRef = context.actorOf(BinaryTreeNode.props(0, initiallyRemoved = true))
 
   var root = createRoot
-
+  var waitingForGcBegin = false
+  var waitingForGcEnd = false
+  var currentOperations = Map[Int, ActorRef]()
   // optional
   var pendingQueue = Queue.empty[Operation]
 
@@ -67,9 +71,38 @@ class BinaryTreeSet extends Actor {
   // optional
   /** Accepts `Operation` and `GC` messages. */
   val normal: Receive = {
-    case Insert(requester, id, ref) => root ! Insert(requester, id, ref)
-    case Contains(requester, id, ref) => root ! Contains(requester, id, ref)
-    case Remove(requester, id, ref) => root ! Remove(requester, id, ref)
+    case Insert(requester, id, ref) => {
+      currentOperations += id -> requester
+      root ! Insert(self, id, ref)
+    }
+    case Contains(requester, id, ref) => {
+      currentOperations += id -> requester
+      root ! Contains(self, id, ref)
+    }
+    case Remove(requester, id, ref) => {
+      currentOperations += id -> requester
+      root ! Remove(self, id, ref)
+    }
+    case ContainsResult(id, result) =>{
+      currentOperations(id) ! ContainsResult(id, result)
+      currentOperations -= id
+      self ! CheckForGc
+    }
+    case OperationFinished(id) =>{
+      currentOperations(id) ! OperationFinished(id)
+      currentOperations -= id
+      self ! CheckForGc
+    }
+    case CheckForGc => {
+      if(waitingForGcBegin && currentOperations.size == 0){
+
+      }
+    }
+    case GC => {
+      if(!waitingForGcBegin && !waitingForGcEnd){
+        waitingForGcBegin = true
+      }
+    }
     case _ => ???
   }
 
@@ -174,6 +207,10 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
           requester ! OperationFinished(id)
         }
       }
+    }
+    case CopyTo(treeNode) => {
+      if(!removed) treeNode ! Insert(self, 0, elem)
+      subtrees.foreach({_._2 ! CopyTo(treeNode)})
     }
     case _ => ???
   }
