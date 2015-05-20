@@ -130,9 +130,9 @@ class BinaryTreeSet extends Actor {
       newRoot = null
     }
     case GC => {
-      if(!waitingForGcBegin && !waitingForGcEnd){
+     /* if(!waitingForGcBegin && !waitingForGcEnd){
         waitingForGcBegin = true
-      }
+      }*/
     }
     case _ => ???
   }
@@ -195,7 +195,7 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
     }
 
     case Insert(requester, id, elem) => {
-      if(id > 0){
+      //if(id > 0){
         if(elem == this.elem) {
           removed = false
           requester ! OperationFinished (id)
@@ -218,10 +218,10 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
             requester ! OperationFinished (id)
           }
         }
-      }
+     /* }
       else {
         self ! CopyFinished
-      }
+      }*/
     }
     case Remove(requester, id, elem) => {
       if(elem == this.elem) {
