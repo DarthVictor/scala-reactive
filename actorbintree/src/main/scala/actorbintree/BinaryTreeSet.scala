@@ -118,7 +118,17 @@ class BinaryTreeSet extends Actor {
         root ! CopyTo(newRoot)
       }
     }
-    case CopyFinished => ???
+    case CopyFinished => {
+      waitingForGcEnd = false
+      while (pendingQueue.size > 0){
+        val p = pendingQueue.dequeue
+        val op = p._1
+        self ! op
+        pendingQueue = p._2
+      }
+      root = newRoot
+      newRoot = null
+    }
     case GC => {
       if(!waitingForGcBegin && !waitingForGcEnd){
         waitingForGcBegin = true
@@ -243,7 +253,10 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
     }
     case CopyFinished => {
       elementsToCopy -= 1
-      if(elementsToCopy == 0) copyToSender ! CopyFinished
+      if(elementsToCopy == 0) {
+        copyToSender ! CopyFinished
+        self ! PoisonPill
+      }
     }
     case _ => ???
   }
