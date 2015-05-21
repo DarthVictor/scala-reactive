@@ -195,7 +195,6 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
     }
 
     case Insert(requester, id, elem) => {
-      //if(id > 0){
         if(elem == this.elem) {
           removed = false
           requester ! OperationFinished (id)
@@ -218,10 +217,6 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
             requester ! OperationFinished (id)
           }
         }
-     /* }
-      else {
-        self ! CopyFinished
-      }*/
     }
     case Remove(requester, id, elem) => {
       if(elem == this.elem) {
@@ -250,6 +245,9 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
       elementsToCopy = subtrees.size + 1
       copyToSender = sender()
       subtrees.foreach{_._2 ! CopyTo(treeNode)}
+    }
+    case OperationFinished(id) => {
+      if(id==0)self ! CopyFinished
     }
     case CopyFinished => {
       elementsToCopy -= 1
