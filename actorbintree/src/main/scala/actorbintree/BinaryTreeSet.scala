@@ -4,6 +4,7 @@
 package actorbintree
 
 import akka.actor._
+import akka.event.Logging
 import scala.collection.immutable.Queue
 
 object BinaryTreeSet {
@@ -41,11 +42,13 @@ object BinaryTreeSet {
 
   case object CheckForGc
 
+  case object ActorCreated
+
   /** Holds the answer to the Contains request with identifier `id`.
     * `result` is true if and only if the element is present in the tree.
     */
   case class ContainsResult(id: Int, result: Boolean) extends OperationReply
-  
+
   /** Message to signal successful completion of an insert or remove operation. */
   case class OperationFinished(id: Int) extends OperationReply
 
@@ -57,12 +60,14 @@ class BinaryTreeSet extends Actor {
   import BinaryTreeNode._
 
   def createRoot: ActorRef = context.actorOf(BinaryTreeNode.props(0, initiallyRemoved = true))
+  //val log = Logging(context.system, this)
 
   var root = createRoot
   var newRoot: ActorRef = null
   var waitingForGcBegin = false
   var waitingForGcEnd = false
   var currentOperations = Map[Int, ActorRef]()
+  var actorCounter: Int = 1
   // optional
   var pendingQueue = Queue.empty[Operation]
 
@@ -72,45 +77,54 @@ class BinaryTreeSet extends Actor {
   // optional
   /** Accepts `Operation` and `GC` messages. */
   val normal: Receive = {
-    case Insert(requester, id, ref) => {
+    case ActorCreated => actorCounter += 1
+    case Insert(requester, id, elem) => {
+      //log.debug("Insert message received id = " + id +  ", elem = " + elem )
       if(!waitingForGcBegin && !waitingForGcEnd){
         currentOperations += id -> requester
-        root ! Insert(self, id, ref)
+        root ! Insert(self, id, elem)
       }
       else{
-        pendingQueue = pendingQueue.enqueue(Insert(requester, id, ref))
+        pendingQueue = pendingQueue.enqueue(Insert(requester, id, elem))
       }
     }
-    case Contains(requester, id, ref) => {
+    case Contains(requester, id, elem) => {
+      //log.debug("Contains message received id = " + id +  ", elem = " + elem )
       if(!waitingForGcBegin && !waitingForGcEnd){
         currentOperations += id -> requester
-        root ! Contains(self, id, ref)
+        root ! Contains(self, id, elem)
       }
       else{
-        pendingQueue = pendingQueue.enqueue(Contains(requester, id, ref))
+        pendingQueue = pendingQueue.enqueue(Contains(requester, id, elem))
       }
     }
-    case Remove(requester, id, ref) => {
+    case Remove(requester, id, elem) => {
+      //log.debug("Remove message received id = " + id +  ", elem = " + elem )
       if(!waitingForGcBegin && !waitingForGcEnd){
         currentOperations += id -> requester
-        root ! Remove(self, id, ref)
+        root ! Remove(self, id, elem)
       }
       else{
-        pendingQueue = pendingQueue.enqueue(Remove(requester, id, ref))
+        pendingQueue = pendingQueue.enqueue(Remove(requester, id, elem))
       }
 
     }
     case ContainsResult(id, result) =>{
+      //log.debug("ContainsResult message received id = " + id +  ", result = " + result )
+
       currentOperations(id) ! ContainsResult(id, result)
       currentOperations -= id
       self ! CheckForGc
     }
     case OperationFinished(id) =>{
+      //log.debug("OperationFinished message received id = " + id)
+
       currentOperations(id) ! OperationFinished(id)
       currentOperations -= id
       self ! CheckForGc
     }
     case CheckForGc => {
+      //if(waitingForGcBegin) log.info("CheckForGc message received and currentOperations = " + currentOperations.size)
       if(waitingForGcBegin && currentOperations.size == 0){
         newRoot = createRoot
         waitingForGcEnd = true
@@ -119,20 +133,25 @@ class BinaryTreeSet extends Actor {
       }
     }
     case CopyFinished => {
+
+      root ! PoisonPill
+      root = newRoot
+      newRoot = null
       waitingForGcEnd = false
+      //log.info("Copy finished, queue = " + pendingQueue.toString())
       while (pendingQueue.size > 0){
         val p = pendingQueue.dequeue
         val op = p._1
         self ! op
+        //log.info(op.toString())
         pendingQueue = p._2
       }
-      root = newRoot
-      newRoot = null
     }
     case GC => {
-     /* if(!waitingForGcBegin && !waitingForGcEnd){
+      //log.debug("GC message received")
+      if(!waitingForGcBegin && !waitingForGcEnd){
         waitingForGcBegin = true
-      }*/
+      }
     }
     case _ => ???
   }
@@ -166,6 +185,14 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
   var removed = initiallyRemoved
   var elementsToCopy: Int = 0
   var copyToSender: ActorRef = null
+  //val log = Logging(context.system, this)
+  override def preStart() = {
+    //log.debug("Starting :"+ elem)
+  }
+  override def postStop() = {
+    //log.debug("Stopping :"+ elem)
+  }
+
   // optional
   def receive = normal
 
@@ -195,6 +222,7 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
     }
 
     case Insert(requester, id, elem) => {
+      //log.info(id + ": " + requester.toString() )
         if(elem == this.elem) {
           removed = false
           requester ! OperationFinished (id)
@@ -241,19 +269,20 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
       }
     }
     case CopyTo(treeNode) => {
+      elementsToCopy = subtrees.size + (if(!removed) 1 else 0)
       if(!removed) treeNode ! Insert(self, 0, elem)
-      elementsToCopy = subtrees.size + 1
       copyToSender = sender()
       subtrees.foreach{_._2 ! CopyTo(treeNode)}
     }
     case OperationFinished(id) => {
+      //log.info("OperationFinished, id = " + id)
       if(id==0)self ! CopyFinished
     }
     case CopyFinished => {
       elementsToCopy -= 1
+      //log.info("CopyFinished, elementsToCopy = " + elementsToCopy)
       if(elementsToCopy == 0) {
         copyToSender ! CopyFinished
-        self ! PoisonPill
       }
     }
     case _ => ???
