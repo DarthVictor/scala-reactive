@@ -44,6 +44,13 @@ object BinaryTreeSet {
 
   case object ActorCreated
 
+  case object ActorCopied
+
+  case class InsertCopy(requester: ActorRef, elem: Int) extends Operation{
+    def id = 0
+  }
+
+
   /** Holds the answer to the Contains request with identifier `id`.
     * `result` is true if and only if the element is present in the tree.
     */
@@ -60,7 +67,7 @@ class BinaryTreeSet extends Actor {
   import BinaryTreeNode._
 
   def createRoot: ActorRef = context.actorOf(BinaryTreeNode.props(0, initiallyRemoved = true))
-  //val log = Logging(context.system, this)
+  val log = Logging(context.system, this)
 
   var root = createRoot
   var newRoot: ActorRef = null
@@ -68,6 +75,7 @@ class BinaryTreeSet extends Actor {
   var waitingForGcEnd = false
   var currentOperations = Map[Int, ActorRef]()
   var actorCounter: Int = 1
+  var actorsToCopy: Int = 0
   // optional
   var pendingQueue = Queue.empty[Operation]
 
@@ -77,7 +85,15 @@ class BinaryTreeSet extends Actor {
   // optional
   /** Accepts `Operation` and `GC` messages. */
   val normal: Receive = {
-    case ActorCreated => actorCounter += 1
+    case ActorCreated => {
+      actorCounter += 1
+      log.info("Actor created, total: " + actorCounter)
+    }
+    case ActorCopied => {
+      actorsToCopy -= 1
+      log.info("Actor copied, rest to copy: " + actorCounter)
+      if(actorsToCopy == 0) self ! CopyFinished
+    }
     case Insert(requester, id, elem) => {
       //log.debug("Insert message received id = " + id +  ", elem = " + elem )
       if(!waitingForGcBegin && !waitingForGcEnd){
@@ -129,7 +145,9 @@ class BinaryTreeSet extends Actor {
         newRoot = createRoot
         waitingForGcEnd = true
         waitingForGcBegin = false
-        root ! CopyTo(newRoot)
+        actorsToCopy = actorCounter
+        actorCounter = 1
+        root ! CopyTo(self, newRoot)
       }
     }
     case CopyFinished => {
@@ -171,7 +189,7 @@ object BinaryTreeNode {
   case object Left extends Position
   case object Right extends Position
 
-  case class CopyTo(treeNode: ActorRef)
+  case class CopyTo(requester: ActorRef, treeNode: ActorRef)
   case object CopyFinished
 
   def props(elem: Int, initiallyRemoved: Boolean) = Props(classOf[BinaryTreeNode],  elem, initiallyRemoved)
@@ -183,15 +201,13 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
 
   var subtrees = Map[Position, ActorRef]()
   var removed = initiallyRemoved
-  var elementsToCopy: Int = 0
-  var copyToSender: ActorRef = null
   //val log = Logging(context.system, this)
-  override def preStart() = {
+  //override def preStart() = {
     //log.debug("Starting :"+ elem)
-  }
-  override def postStop() = {
+  //}
+  //override def postStop() = {
     //log.debug("Stopping :"+ elem)
-  }
+  //}
 
   // optional
   def receive = normal
@@ -224,6 +240,7 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
     case Insert(requester, id, elem) => {
       //log.info(id + ": " + requester.toString() )
         if(elem == this.elem) {
+          if(removed) requester ! ActorCreated
           removed = false
           requester ! OperationFinished (id)
         }
@@ -233,6 +250,7 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
           }
           else{
             subtrees += Left ->  context.actorOf(BinaryTreeNode.props(elem = elem, initiallyRemoved = false))
+            requester ! ActorCreated
             requester ! OperationFinished (id)
           }
         }
@@ -242,6 +260,7 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
           }
           else{
             subtrees += Right ->  context.actorOf(BinaryTreeNode.props(elem = elem, initiallyRemoved = false))
+            requester ! ActorCreated
             requester ! OperationFinished (id)
           }
         }
@@ -268,21 +287,42 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
         }
       }
     }
-    case CopyTo(treeNode) => {
-      elementsToCopy = subtrees.size + (if(!removed) 1 else 0)
-      if(!removed) treeNode ! Insert(self, 0, elem)
-      copyToSender = sender()
-      subtrees.foreach{_._2 ! CopyTo(treeNode)}
+    case CopyTo(requester: ActorRef, treeNode: ActorRef) => {
+      if(!removed) {
+        treeNode ! InsertCopy(requester, elem)
+      }
+      else{
+        requester ! ActorCopied
+      }
+      subtrees.foreach{_._2 ! CopyTo(requester, treeNode)}
     }
-    case OperationFinished(id) => {
-      //log.info("OperationFinished, id = " + id)
-      if(id==0)self ! CopyFinished
-    }
-    case CopyFinished => {
-      elementsToCopy -= 1
-      //log.info("CopyFinished, elementsToCopy = " + elementsToCopy)
-      if(elementsToCopy == 0) {
-        copyToSender ! CopyFinished
+
+    case InsertCopy(requester, elem) => {
+      //log.info(id + ": " + requester.toString() )
+      if(elem == this.elem) {
+        if(removed) requester ! ActorCreated
+        requester ! ActorCopied
+        removed = false
+      }
+      else if (elem < this.elem){
+        if(subtrees.contains(Left)) {
+          subtrees(Left) ! InsertCopy(requester, elem)
+        }
+        else{
+          subtrees += Left ->  context.actorOf(BinaryTreeNode.props(elem = elem, initiallyRemoved = false))
+          requester ! ActorCopied
+          requester ! ActorCreated
+        }
+      }
+      else if (elem > this.elem){
+        if(subtrees.contains(Right)) {
+          subtrees(Right) ! InsertCopy(requester, elem)
+        }
+        else{
+          subtrees += Right ->  context.actorOf(BinaryTreeNode.props(elem = elem, initiallyRemoved = false))
+          requester ! ActorCopied
+          requester ! ActorCreated
+        }
       }
     }
     case _ => ???
