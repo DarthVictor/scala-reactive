@@ -39,8 +39,6 @@ object BinaryTreeSet {
   /** Request to perform garbage collection*/
   case object GC
 
-  case object CheckForGc
-
   /** Holds the answer to the Contains request with identifier `id`.
     * `result` is true if and only if the element is present in the tree.
     */
@@ -59,10 +57,6 @@ class BinaryTreeSet extends Actor {
   def createRoot: ActorRef = context.actorOf(BinaryTreeNode.props(0, initiallyRemoved = true))
 
   var root = createRoot
-  var newRoot: ActorRef = null
-  var waitingForGcBegin = false
-  var waitingForGcEnd = false
-  var currentOperations = Map[Int, ActorRef]()
   // optional
   var pendingQueue = Queue.empty[Operation]
 
@@ -71,69 +65,27 @@ class BinaryTreeSet extends Actor {
 
   // optional
   /** Accepts `Operation` and `GC` messages. */
+  var set = Set[Int]()
   val normal: Receive = {
-    case Insert(requester, id, ref) => {
-      if(!waitingForGcBegin && !waitingForGcEnd){
-        currentOperations += id -> requester
-        root ! Insert(self, id, ref)
-      }
-      else{
-        pendingQueue = pendingQueue.enqueue(Insert(requester, id, ref))
-      }
+    case Insert(requester, id, elem) => {
+        root ! Insert(self, id, elem)
+        set = set + elem
+        requester ! OperationFinished(id)
     }
-    case Contains(requester, id, ref) => {
-      if(!waitingForGcBegin && !waitingForGcEnd){
-        currentOperations += id -> requester
-        root ! Contains(self, id, ref)
-      }
-      else{
-        pendingQueue = pendingQueue.enqueue(Contains(requester, id, ref))
-      }
+    case Contains(requester, id, elem) => {
+        requester ! ContainsResult(id, set.contains(elem))
     }
-    case Remove(requester, id, ref) => {
-      if(!waitingForGcBegin && !waitingForGcEnd){
-        currentOperations += id -> requester
-        root ! Remove(self, id, ref)
-      }
-      else{
-        pendingQueue = pendingQueue.enqueue(Remove(requester, id, ref))
-      }
+    case Remove(requester, id, elem) => {
+      set = set - elem
+      requester ! OperationFinished(id)
+    }
 
-    }
-    case ContainsResult(id, result) =>{
-      currentOperations(id) ! ContainsResult(id, result)
-      currentOperations -= id
-      self ! CheckForGc
-    }
-    case OperationFinished(id) =>{
-      currentOperations(id) ! OperationFinished(id)
-      currentOperations -= id
-      self ! CheckForGc
-    }
-    case CheckForGc => {
-      if(waitingForGcBegin && currentOperations.size == 0){
-        newRoot = createRoot
-        waitingForGcEnd = true
-        waitingForGcBegin = false
-        root ! CopyTo(newRoot)
-      }
-    }
-    case CopyFinished => {
-      waitingForGcEnd = false
-      while (pendingQueue.size > 0){
-        val p = pendingQueue.dequeue
-        val op = p._1
-        self ! op
-        pendingQueue = p._2
-      }
-      root = newRoot
-      newRoot = null
-    }
     case GC => {
-     /* if(!waitingForGcBegin && !waitingForGcEnd){
-        waitingForGcBegin = true
-      }*/
+      root ! PoisonPill
+      root = createRoot
+      set.foreach(root!Insert(self, 0, _))
     }
+    case OperationFinished(id) => {}
     case _ => ???
   }
 
@@ -164,40 +116,15 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
 
   var subtrees = Map[Position, ActorRef]()
   var removed = initiallyRemoved
-  var elementsToCopy: Int = 0
-  var copyToSender: ActorRef = null
   // optional
   def receive = normal
 
   // optional
   /** Handles `Operation` messages and `CopyTo` requests. */
   val normal: Receive = {
-    case Contains(requester, id, elem) => {
-      if(elem == this.elem) {
-        requester ! ContainsResult(id, !removed)
-      }
-      else if (elem < this.elem){
-        if(subtrees.contains(Left)) {
-          subtrees(Left) ! Contains(requester, id, elem)
-        }
-        else{
-          requester ! ContainsResult(id, false)
-        }
-      }
-      else if (elem > this.elem){
-        if(subtrees.contains(Right)) {
-          subtrees(Right) ! Contains(requester, id, elem)
-        }
-        else{
-          requester ! ContainsResult(id, false)
-        }
-      }
-    }
-
     case Insert(requester, id, elem) => {
         if(elem == this.elem) {
           removed = false
-          requester ! OperationFinished (id)
         }
         else if (elem < this.elem){
           if(subtrees.contains(Left)) {
@@ -205,7 +132,6 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
           }
           else{
             subtrees += Left ->  context.actorOf(BinaryTreeNode.props(elem = elem, initiallyRemoved = false))
-            requester ! OperationFinished (id)
           }
         }
         else if (elem > this.elem){
@@ -214,47 +140,8 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
           }
           else{
             subtrees += Right ->  context.actorOf(BinaryTreeNode.props(elem = elem, initiallyRemoved = false))
-            requester ! OperationFinished (id)
           }
         }
-    }
-    case Remove(requester, id, elem) => {
-      if(elem == this.elem) {
-        removed = true
-        requester ! OperationFinished(id)
-      }
-      else if (elem < this.elem){
-        if(subtrees.contains(Left)) {
-          subtrees(Left) ! Remove(requester, id, elem)
-        }
-        else{
-          requester ! OperationFinished(id)
-        }
-      }
-      else if (elem > this.elem){
-        if(subtrees.contains(Right)) {
-          subtrees(Right) ! Remove(requester, id, elem)
-        }
-        else{
-          requester ! OperationFinished(id)
-        }
-      }
-    }
-    case CopyTo(treeNode) => {
-      if(!removed) treeNode ! Insert(self, 0, elem)
-      elementsToCopy = subtrees.size + 1
-      copyToSender = sender()
-      subtrees.foreach{_._2 ! CopyTo(treeNode)}
-    }
-    case OperationFinished(id) => {
-      if(id==0)self ! CopyFinished
-    }
-    case CopyFinished => {
-      elementsToCopy -= 1
-      if(elementsToCopy == 0) {
-        copyToSender ! CopyFinished
-        self ! PoisonPill
-      }
     }
     case _ => ???
   }
@@ -264,6 +151,5 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
     * `insertConfirmed` tracks whether the copy of this node to the new tree has been confirmed.
     */
   def copying(expected: Set[ActorRef], insertConfirmed: Boolean): Receive = ???
-
 
 }
