@@ -46,6 +46,9 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
   // the current set of replicators
   var replicators = Set.empty[ActorRef]
   var seqSecondary = 0L;
+
+  val persistence = context.system.actorOf(persistenceProps)
+
   arbiter ! Join
 
   def receive = {
@@ -80,12 +83,14 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
           case Some(s) => kv += (key -> s)
           case None => kv -= key
         }
+        //persistence ! Persist(key, valueOption, seq)
+        sender() ! SnapshotAck(key: String, seq: Long)
+        seqSecondary += 1
       }
-      if(seq <= seqSecondary) {
+      else if(seq < seqSecondary) {
         sender() ! SnapshotAck(key: String, seq: Long)
         seqSecondary = Math.max(seq + 1, seqSecondary)
       }
-
     }
     case _ =>
   }
