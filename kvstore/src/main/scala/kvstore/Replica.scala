@@ -88,23 +88,19 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
         unreplicatedKeys += id -> UnreplicatedValue(sender, key, valueOption, id, replicators, MAX_PERSISTENCE_RETRY)
       }
       replicators foreach {
-        case replicator => replicator ! Replicate(key, valueOption, id)
+        case replicator => {
+          replicator ! Replicate(key, valueOption, id)
+        }
       }
     }
 
     case Insert(key, value, id) =>{
       kv += (key -> value)
       self ! PersistAndReplicate (sender(), key, Some(value), id)
-      //val persistMsg = Persist(key, Some(value), id)
-      //persistenceAcks += id -> (sender(), persistMsg, Some(MAX_PERSISTENCE_RETRY) )
-      //persistence ! persistMsg
     }
     case Remove(key, id) =>{
       kv -= key
       self ! PersistAndReplicate (sender(), key, None, id)
-      //val persistMsg = Persist(key, None, id)
-      //persistenceAcks += id -> (sender(), persistMsg, Some(MAX_PERSISTENCE_RETRY))
-      //persistence ! persistMsg
     }
     case Get(key, id) =>{
       sender() ! GetResult(key, kv.get(key), id)
@@ -120,6 +116,7 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
         case None => {}
       }
     }
+
     case Replicated(key, id) => {
       unreplicatedKeys.get(id) match {
         case Some(unreplicatedValue) => {
@@ -127,7 +124,7 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
           if(unreplicatedValue.restReplicators.size == 0) {
             unreplicatedKeys -= id
             if(persistenceAcks.get(id).isEmpty) {
-              if(unreplicatedValue.id >0) { // just remove in case of unreplicatedValue from new replica
+              if(unreplicatedValue.id >= 0) { // just remove in case of unreplicatedValue from new replica
                 unreplicatedValue.sender ! OperationAck(id)
               }
             }
@@ -184,15 +181,18 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
     }
 
     case Replicas(replicasRef) => {
-      val newReplicas = replicasRef -- secondaries.keySet - self
+      val newReplicas = (replicasRef -- secondaries.keySet) - self
+      val removedReplicas = secondaries.keySet -- replicasRef
+
       newReplicas foreach {
         case newReplica => {
-          val replicator = context.actorOf(Replicator.props(newReplica))
+          val replicator = context.system.actorOf(Replicator.props(newReplica))
           secondaries += newReplica -> replicator
           replicators += replicator
 
           kv foreach {
             case (key, value) => {
+
               val id = nextRepSeq
               val valueOption = Some(value)
               replicator ! Replicate(key, valueOption, id)
@@ -201,6 +201,33 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
           }
         }
       }
+
+      removedReplicas foreach {
+        case removedReplica => {
+          secondaries.get(removedReplica) match {
+            case Some(replicator) => {
+              context.stop(replicator)
+              unreplicatedKeys foreach {
+                case (key, unreplicatedValue) => {
+                  unreplicatedValue.restReplicators -= replicator
+                  log.warning("unreplicatedValue.restReplicators.isEmpty = "+ unreplicatedValue.restReplicators.isEmpty)
+                  if(unreplicatedValue.restReplicators.isEmpty){
+                    self ! Replicated(unreplicatedValue.key, unreplicatedValue.id)
+                  }
+                }
+              }
+              unreplicatedKeys = unreplicatedKeys filter{
+                case (key, unreplicatedValue) => {
+
+                  unreplicatedValue.restReplicators.size > 0
+                }
+              }
+            }
+            case None => {}
+          }
+        }
+      }
+
     }
 
     case _ => {
@@ -241,7 +268,9 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
     case ReceiveTimeout => {
       persistenceAcks foreach {case (seq, ack) => persistence ! ack._2 }
     }
-    case _ =>
+    case _ => {
+      log.error("Unknown msg")
+    }
   }
 
 }

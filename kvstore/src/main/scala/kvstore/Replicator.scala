@@ -1,6 +1,7 @@
 package kvstore
 
 import akka.actor.{ReceiveTimeout, Props, Actor, ActorRef}
+import akka.event.Logging
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
@@ -34,6 +35,7 @@ class Replicator(val replica: ActorRef) extends Actor {
     _seqCounter += 1
     ret
   }
+  val log = Logging(context.system, this)
 
   context.setReceiveTimeout(100 millisecond)
   
@@ -56,7 +58,9 @@ class Replicator(val replica: ActorRef) extends Actor {
     case ReceiveTimeout => {
       acks foreach {case (seq, ack) => replica ! Snapshot(ack._2.key, ack._2.valueOption, seq)}
     }
-    case _ =>
+    case _ => {
+      log.error("Unknown msg")
+    }
   }
 
 }
