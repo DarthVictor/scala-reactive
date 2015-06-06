@@ -1,17 +1,14 @@
 package kvstore
 
-import akka.actor.{ OneForOneStrategy, Props, ActorRef, Actor }
+import akka.actor._
 import kvstore.Arbiter._
 import scala.collection.immutable.Queue
 import akka.actor.SupervisorStrategy.Restart
 import scala.annotation.tailrec
 import akka.pattern.{ ask, pipe }
-import akka.actor.Terminated
 import scala.concurrent.duration._
-import akka.actor.PoisonPill
-import akka.actor.OneForOneStrategy
-import akka.actor.SupervisorStrategy
 import akka.util.Timeout
+import scala.language.postfixOps
 
 object Replica {
   sealed trait Operation {
@@ -39,7 +36,7 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
   /*
    * The contents of this actor is just a suggestion, you can implement it in any way you like.
    */
-  
+
   var kv = Map.empty[String, String]
   // a map from secondary replicas to replicators
   var secondaries = Map.empty[ActorRef, ActorRef]
@@ -48,6 +45,11 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
   var seqSecondary = 0L;
 
   val persistence = context.system.actorOf(persistenceProps)
+  override val supervisorStrategy = OneForOneStrategy() {
+    case _: PersistenceException => Restart
+  }
+  var persistenceAcks = Map.empty[Long, (ActorRef, Persist)]
+  context.setReceiveTimeout(100 millisecond)
 
   arbiter ! Join
 
@@ -83,14 +85,27 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
           case Some(s) => kv += (key -> s)
           case None => kv -= key
         }
-        //persistence ! Persist(key, valueOption, seq)
-        sender() ! SnapshotAck(key: String, seq: Long)
-        seqSecondary += 1
+        val persistMsg = Persist(key, valueOption, seq)
+        persistenceAcks += seq -> (sender(), persistMsg)
+        persistence ! persistMsg
       }
       else if(seq < seqSecondary) {
         sender() ! SnapshotAck(key: String, seq: Long)
         seqSecondary = Math.max(seq + 1, seqSecondary)
       }
+    }
+    case Persisted(key, id)  => {
+      persistenceAcks.get(id) match {
+        case Some(ack) => {
+          persistenceAcks -= id
+          ack._1 ! SnapshotAck(ack._2.key, ack._2.id)
+          seqSecondary += 1
+        }
+        case None => {}
+      }
+    }
+    case ReceiveTimeout => {
+      persistenceAcks foreach {case (seq, ack) => persistence ! Persist(ack._2.key, ack._2.valueOption, ack._2.id)}
     }
     case _ =>
   }
