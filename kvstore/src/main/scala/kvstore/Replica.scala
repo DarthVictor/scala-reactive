@@ -121,7 +121,7 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
       unreplicatedKeys.get(id) match {
         case Some(unreplicatedValue) => {
           unreplicatedValue.restReplicators -= sender()
-          if(unreplicatedValue.restReplicators.size == 0) {
+          if(unreplicatedValue.restReplicators.isEmpty) {
             unreplicatedKeys -= id
             if(persistenceAcks.get(id).isEmpty) {
               if(unreplicatedValue.id >= 0) { // just remove in case of unreplicatedValue from new replica
@@ -210,9 +210,13 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
               unreplicatedKeys foreach {
                 case (key, unreplicatedValue) => {
                   unreplicatedValue.restReplicators -= replicator
-                  log.warning("unreplicatedValue.restReplicators.isEmpty = "+ unreplicatedValue.restReplicators.isEmpty)
                   if(unreplicatedValue.restReplicators.isEmpty){
-                    self ! Replicated(unreplicatedValue.key, unreplicatedValue.id)
+                    unreplicatedKeys -= unreplicatedValue.id
+                    if(persistenceAcks.get(unreplicatedValue.id).isEmpty) {
+                      if(unreplicatedValue.id >= 0) { // just remove in case of unreplicatedValue from new replica
+                        unreplicatedValue.sender ! OperationAck(unreplicatedValue.id)
+                      }
+                    }
                   }
                 }
               }
