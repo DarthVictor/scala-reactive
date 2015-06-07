@@ -222,7 +222,6 @@ class Replica(val arbiter: ActorRef, persistenceProps: Props) extends Actor {
               }
               unreplicatedKeys = unreplicatedKeys filter{
                 case (key, unreplicatedValue) => {
-
                   unreplicatedValue.restReplicators.size > 0
                 }
               }
